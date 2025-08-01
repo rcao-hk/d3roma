@@ -10,7 +10,6 @@ from accelerate import Accelerator, PartialState
 from core.guidance import FlowGuidance
 import numpy as np
 from utils.utils import seed_everything
-from config import TrainingConfig, create_sampler
 from diffusers import UNet2DModel, DDIMScheduler
 from utils.utils import InputPadder, metrics_to_dict, pretty_json
 from accelerate.logging import get_logger
@@ -40,30 +39,35 @@ def run_distributed_eval(base_cfg: Config):
     patrained_path = f"{config.resume_pretrained}"
     if os.path.exists(patrained_path):
         logger.info(f"load weights from {patrained_path}")
-        """ pipeline = GuidedLatentDiffusionPipeline.from_pretrained(patrained_path).to("cuda")
-        # model = UNet2DConditionModel.from_pretrained(patrained_path)
+        # pipeline = GuidedLatentDiffusionPipeline.from_pretrained(patrained_path).to("cuda")
+        # # model = UNet2DModel.from_pretrained(patrained_path)
 
-        from diffusers import DDIMScheduler
-        ddim = DDIMScheduler.from_config(dict(
-            beta_schedule = config.beta_schedule, # "scaled_linear",
-            beta_start = config.beta_start, # 0.00085,
-            beta_end = config.beta_end, # 0.012,
-            clip_sample = config.clip_sample, # False,
-            num_train_timesteps = config.num_train_timesteps, # 1000,
-            prediction_type = config.prediction_type, # #"v_prediction",
-            set_alpha_to_one = False,
-            skip_prk_steps = True,
-            steps_offset = 1,
-            trained_betas = None
-        ))
-        pipeline.scheduler = ddim """
+        # from diffusers import DDIMScheduler
+        # ddim = DDIMScheduler.from_config(dict(
+        #     beta_schedule = config.beta_schedule, # "scaled_linear",
+        #     beta_start = config.beta_start, # 0.00085,
+        #     beta_end = config.beta_end, # 0.012,
+        #     clip_sample = config.clip_sample, # False,
+        #     num_train_timesteps = config.num_train_timesteps, # 1000,
+        #     prediction_type = config.prediction_type, # #"v_prediction",
+        #     set_alpha_to_one = False,
+        #     skip_prk_steps = True,
+        #     steps_offset = 1,
+        #     trained_betas = None
+        # ))
+        # pipeline.scheduler = ddim
 
         from core.custom_pipelines import GuidedDiffusionPipeline, GuidedLatentDiffusionPipeline
-        clazz_pipeline = GuidedLatentDiffusionPipeline if config.ldm else GuidedDiffusionPipeline
-        pipeline = clazz_pipeline.from_pretrained(patrained_path).to("cuda")
-        pipeline.guidance.flow_guidance_mode=config.flow_guidance_mode
+        # clazz_pipeline = GuidedLatentDiffusionPipeline if config.ldm else GuidedDiffusionPipeline
+        # pipeline = clazz_pipeline.from_pretrained(patrained_path).to("cuda")
+        # pipeline.guidance.flow_guidance_mode=config.flow_guidance_mode
 
-        pipeline.scheduler = create_sampler(config, train=False)
+        # pipeline.scheduler = create_sampler(config, train=False)
+        model = UNet2DModel.from_pretrained(f"{patrained_path}/unet").to("cuda")
+        flow_guidance =  FlowGuidance(config.flow_guidance_weights[0], config.perturb_start_ratio, config.flow_guidance_mode)
+        scheduler = create_sampler(config, train=False)
+        pipeline = GuidedDiffusionPipeline(unet=accelerator.unwrap_model(model), guidance=flow_guidance, scheduler=scheduler)
+        
     else:
         raise ValueError(f"patrained path not exists: {patrained_path}")
 
@@ -82,6 +86,7 @@ def run_distributed_eval(base_cfg: Config):
     from data.data_loader import create_dataset
     val_dataset = create_dataset(config, config.eval_dataset[0], split = config.eval_split)
     # print(f"eval_batch_size={config.eval_batch_size}"); exit(0)
+    # print(f"eval dataset: {val_dataset.__class__.__name__}, split={config.eval_split}, len={len(val_dataset)}")
     val_dataloader = torch.utils.data.DataLoader(val_dataset,
                                                 batch_size=config.eval_batch_size,
                                                 shuffle=True,
@@ -117,6 +122,7 @@ def run_distributed_eval(base_cfg: Config):
         right_images = batch["right_image"] if "right_image" in batch else None
         depth_images = batch["depth"] if "depth" in batch else None
         gt_masks = batch["mask"]
+        obj_masks = batch["obj_mask"] if "obj_mask" in batch else None
         fxb = batch["fxb"]
         sim_disps = batch["sim_disp"] if "sim_disp" in batch else None
         
@@ -146,7 +152,7 @@ def run_distributed_eval(base_cfg: Config):
             pipeline.guidance.flow_guidance_weight = w
 
         pred_disps, metrics_, uncertainties, error, intermediates = eval_batch(config, pipeline, disable_bar,  fxb, normalized_rgbs, 
-                                                                               raw_disps, gt_masks, left_images, right_images, sim_disps)
+                                                                               raw_disps, gt_masks, gt_masks, left_images, right_images, sim_disps)
         metrics = metrics_to_dict(*metrics_)
         logger.info(f"metrics(w={w}):{pretty_json(metrics)}")
 

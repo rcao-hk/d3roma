@@ -30,6 +30,102 @@ from utils.camera import DepthCamera, Realsense
 
 normalize_rgb = lambda x: (x / 255. - 0.5) * 2
 
+import Imath
+import OpenEXR
+def exr_loader(exr_path, ndim = 3, ndim_representation = ['R', 'G', 'B']):
+    """
+    Loads a .exr file as a numpy array.
+
+    This is adapted from implicit-depth repository, ref: https://github.com/NVlabs/implicit_depth/blob/main/src/utils/data_augmentation.py.
+
+    Parameters
+    ----------
+
+    exr_path: path to the exr file
+    
+    ndim: number of channels that should be in returned array. Valid values are 1 and 3.
+        - if ndim=1, only the 'R' channel is taken from exr file;
+        - if ndim=3, the 'R', 'G' and 'B' channels are taken from exr file. The exr file must have 3 channels in this case.
+    
+    depth_representation: list of str, the representation of channels, default = ['R', 'G', 'B'].
+    
+    Returns
+    -------
+
+    numpy.ndarray (dtype=np.float32).
+        - If ndim=1, shape is (height x width);
+        - If ndim=3, shape is (3 x height x width)
+    """
+
+    exr_file = OpenEXR.InputFile(exr_path)
+    cm_dw = exr_file.header()['dataWindow']
+    size = (cm_dw.max.x - cm_dw.min.x + 1, cm_dw.max.y - cm_dw.min.y + 1)
+
+    pt = Imath.PixelType(Imath.PixelType.FLOAT)
+    assert ndim == len(ndim_representation), "ndim should match ndim_representation."
+
+    if ndim == 3:
+        # read channels indivudally
+        allchannels = []
+        for c in ndim_representation:
+            # transform data to numpy
+            channel = np.frombuffer(exr_file.channel(c, pt), dtype=np.float32)
+            channel.shape = (size[1], size[0])
+            allchannels.append(channel)
+
+        # create array and transpose dimensions to match tensor style
+        exr_arr = np.array(allchannels).transpose((0, 1, 2))
+        return exr_arr
+
+    if ndim == 1:
+        # transform data to numpy
+        channel = np.frombuffer(exr_file.channel(ndim_representation[0], pt), dtype=np.float32)
+        channel.shape = (size[1], size[0])  # Numpy arrays are (row, col)
+        exr_arr = np.array(channel)
+        return exr_arr
+
+
+def load_meta(file_path):
+    with open(file_path, "r") as f:  # 打开文件
+        data = f.readlines()  # 读取文件
+    meta = []
+    for line in data:
+        words = line.split(" ")
+        instance = {}
+        if len(words) > 5:
+            instance["index"] = int(words[0])
+            instance["label"] = int(words[1])
+            instance["instance_folder"] = words[2]
+            instance["name"] = words[3]
+            instance["scale"] = float(words[4])
+            instance["material"] = int(words[5])
+            instance["quaternion"] = np.array([float(words[6]), float(words[7]), float(words[8]), float(words[9])])
+            instance["translation"] = np.array([float(words[10]), float(words[11]), float(words[12])])
+        else:
+            instance["index"] = int(words[0])
+            instance["label"] = int(words[1])
+            instance["instance_folder"] = -1
+            instance["name"] = -1
+            instance["scale"] = -1
+            instance["material"] = int(words[2])
+            instance["quaternion"] = np.array([0., 0., 0., 0.])
+            instance["translation"] = np.array([0., 0., 0.])
+        meta.append(instance)
+        
+    while len(meta) < 30:
+        instance = {}
+        instance["index"] = -1
+        instance["label"] = -1
+        instance["instance_folder"] = " "
+        instance["name"] = " "
+        instance["scale"] = -1.
+        instance["material"] = -1 
+        instance["quaternion"] = np.array([0., 0., 0., 0.])
+        instance["translation"] = np.array([0., 0., 0.])
+        meta.append(instance)
+    return meta
+
+
 class StereoDataset(data.Dataset):
     def __init__(self, aug_params=None, sparse=False, reader=None, normalizer=None):
         self.augmentor = None
@@ -357,6 +453,8 @@ class ActiveStereoDataset(StereoDataset):
         self.rgb_list = []
         self.depth_list = []
         self.raw_depth_list = []
+        self.obj_mask_list = []
+        self.metadata_list = []
         self.space = space
 
         self.camera: DepthCamera = camera
@@ -376,7 +474,7 @@ class ActiveStereoDataset(StereoDataset):
         # result = super().__getitem__(index)
         # assert tuple(result["normalized_disp"].shape[-2:]) == tuple(self.image_size)
         # index = 22949 # DEBUG
-        index = index % len(self.image_list)
+        index = index % len(self.rgb_list)
         disp = self.disparity_reader(self.disparity_list[index])
         if isinstance(disp, tuple):
             disp, valid, min_disp, max_disp = disp
@@ -385,6 +483,30 @@ class ActiveStereoDataset(StereoDataset):
             max_disp = 512
             valid = (disp < max_disp) and (disp > min_disp)
         
+        if self.split.startswith("test_std"):
+            mask = Image.open(self.obj_mask_list[index])
+            mask = np.array(mask)
+        else:
+            mask = exr_loader(self.obj_mask_list[index], ndim = 1, ndim_representation = ['R'])
+            mask = np.array(mask * 255, dtype=np.int32)
+            
+        meta = load_meta(self.metadata_list[index])
+        material_mask = np.full(mask.shape, -1)
+        for i in range(len(meta)):
+            material_mask[mask == meta[i]["index"]] = meta[i]["material"]
+        
+        obj_mask = np.full(mask.shape, 0)
+        obj_mask[material_mask == 2] = 1
+        obj_mask[material_mask == 3] = 1
+        obj_mask[material_mask == 0] = 1
+        obj_mask[material_mask == 1] = 1
+        
+        # print('valid', valid.shape, 'obj_mask', obj_mask.shape)
+        if obj_mask.shape != valid.shape:
+            # resize obj_mask to valid shape
+            obj_mask = cv2.resize(obj_mask, dsize=valid.shape[::-1], interpolation=cv2.INTER_NEAREST)
+            
+        # cv2.imwrite('valid.png', valid.astype(np.uint8)*255)
         rgb = np.array(Image.open(self.rgb_list[index])).astype(np.uint8)[...,:3]
 
         if self.image_list is not None and len(self.image_list) > 0:
@@ -448,6 +570,7 @@ class ActiveStereoDataset(StereoDataset):
 
         disp = torch.from_numpy(disp).float().unsqueeze(0)  # [1,h,w]
         valid = torch.from_numpy(valid).float().unsqueeze(0)  # [1,h,w]
+        obj_mask = torch.from_numpy(obj_mask).float().unsqueeze(0)  # [1,h,w]
         
         def random_crop_with_margin(x, margin=16): # horizontal margin left
             H, W = self.image_size # crop size
@@ -467,7 +590,7 @@ class ActiveStereoDataset(StereoDataset):
                 x = F.pad(x, (to_pad, 0), mode="replicate")
             return x, off_x, off_y, margin
 
-        dr12 = torch.vstack([disp, rgb, img1, img2, valid, depth])
+        dr12 = torch.vstack([disp, rgb, img1, img2, valid, obj_mask, depth])
         if raw_depth is not None:
             dr12 = torch.vstack([dr12, raw_depth])
 
@@ -479,9 +602,9 @@ class ActiveStereoDataset(StereoDataset):
         assert margin_left == 0, "not implemented yet"
         dr12, off_x, off_y, margin_left = random_crop_with_margin(dr12, margin_left)
         if raw_depth is not None:
-            disp, rgb, img1, img2, valid, depth, raw_depth = torch.split(dr12, [1, 3, 3, 3, 1, 1, 1], dim=0)
+            disp, rgb, img1, img2, valid, obj_mask, depth, raw_depth = torch.split(dr12, [1, 3, 3, 3, 1, 1, 1, 1], dim=0)
         else:
-            disp, rgb, img1, img2, valid, depth = torch.split(dr12, [1, 3, 3, 3, 1, 1], dim=0)
+            disp, rgb, img1, img2, valid, obj_mask, depth = torch.split(dr12, [1, 3, 3, 3, 1, 1, 1], dim=0)
 
         # center_crop = transforms.CenterCrop(self.image_size)
         def left_crop(x, margin=16):
@@ -492,6 +615,7 @@ class ActiveStereoDataset(StereoDataset):
         disp = left_crop(disp, margin_left)
         rgb = left_crop(rgb, margin_left)
         valid = left_crop(valid, margin_left)
+        obj_mask = left_crop(obj_mask, margin_left)
         depth = left_crop(depth, margin_left)
         if raw_depth is not None:
             raw_depth = left_crop(raw_depth, margin_left)
@@ -531,6 +655,7 @@ class ActiveStereoDataset(StereoDataset):
             "right_image": normalize_rgb(img2),
             "path": self.raw_depth_list[index],
             "mask": valid.float(),
+            "obj_mask": obj_mask.float(), # [1,h,w]
             "depth": depth, # gt
             # "disp": disp, # gt
             "index": index,
@@ -555,20 +680,32 @@ class Dreds(ActiveStereoDataset):
 
         root = f"datasets/DREDS/{split}"
         rgb_list = sorted(glob(osp.join(root, f'**/*color.png'), recursive=True))
-
-        gt_depth_ext = "_gt_depth.exr" if split.startswith("test_std") else "depth_120.exr"
+        
+        if split.startswith("test_std"):
+            gt_depth_ext = "_gt_depth.exr"
+        elif split.startswith("test_dreds"):
+            gt_depth_ext = "_depth_0.exr"
+        else:
+            gt_depth_ext = "_depth_120.exr"
         depth_list = sorted(glob(osp.join(root, f'**/*{gt_depth_ext}'), recursive=True))
 
         raw_depth_ext = "_depth_415.exr" if split.startswith("test_std") else "_simDepthImage.exr"
         raw_depth_list = sorted(glob(osp.join(root, f'**/*{raw_depth_ext}'), recursive=True))
         raw_disparity_list = sorted(glob(osp.join(root, f'**/*{raw_depth_ext}'), recursive=True))
+        
+        raw_mask_ext = '_mask.png' if split.startswith("test_std") else '_mask.exr'
+        raw_obj_mask_list = sorted(glob(osp.join(root, f'**/*{raw_mask_ext}'), recursive=True))
 
-        for rgb, depth, raw_depth, sim_disp in zip(rgb_list, depth_list, raw_depth_list, raw_disparity_list): 
+        metadata_list = sorted(glob(osp.join(root, f'**/*_meta.txt'), recursive=True))
+        
+        for rgb, depth, raw_depth, sim_disp, obj_mask, metadata in zip(rgb_list, depth_list, raw_depth_list, raw_disparity_list, raw_obj_mask_list, metadata_list): 
             self.rgb_list += [rgb]
             self.depth_list += [ depth ]
             self.disparity_list += [ depth ] # ~~~ to convert depth to disparity
             self.raw_depth_list += [raw_depth]
             self.sim_disparity_list += [sim_disp]
+            self.obj_mask_list += [obj_mask]
+            self.metadata_list += [metadata]
 
         if not split.startswith("test_std"):
             image1_list = sorted(glob(osp.join(root, f'**/*ir_l.png'), recursive=True))
@@ -581,6 +718,8 @@ class Dreds(ActiveStereoDataset):
         
         assert len(self.rgb_list) == len(self.depth_list) == len(self.sim_disparity_list) > 0, "no data found"
         
+    def __len__(self):
+        return len(self.rgb_list)
 
 class HISS(ActiveStereoDataset):
     def __init__(self, camera, normalizer, image_size, split="train", space="disp", aug_params=None, reader=None):

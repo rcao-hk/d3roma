@@ -494,10 +494,35 @@ class Realsense(DepthCamera):
                     ])
                 }
             }
+        elif device == "graspnet_d435":
+            # 640x360
+            conf = {
+                "intrinsics": {
+                    "color": np.array([927.17, 927.17, 319.510498046875, 651.32]),
+                    "depth": np.array([927.17, 927.17, 319.510498046875, 349.62]),
+                },
+                "extrinsics": {
+                    "color_to_depth": np.array([
+                        [0.999823   ,       -0.0178564,     -0.00593102, -0.0150311784818769], 
+                        [0.0178789 ,     0.999833,          0.0037614, 3.65326523024123e-05],
+                        [0.00586286 ,     -0.00386678,     0.999975,   -0.00051211315440014],
+                        [0, 0, 0, 1]
+                    ]),
+                    "left_to_right": np.array([
+                        [1, 0, 0, -0.0547580868005753],
+                        [0, 1, 0, 0],
+                        [0, 0, 1, 0],
+                        [0, 0, 0, 1]
+                    ])
+                }
+            }
         else:
             raise RuntimeError("unknown real device (no intrinsics/extrinsics), please call Realsense.create_real() instead.")
 
-        cam = Realsense.create_real("640x360", conf)
+        if device == "graspnet_d435":
+            cam = Realsense.create_real("1280x720", conf)
+        else:
+            cam = Realsense.create_real("640x360", conf)
         cam.device = device
 
         if device == "d435": # hack

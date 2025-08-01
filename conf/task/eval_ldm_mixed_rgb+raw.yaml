@@ -3,10 +3,10 @@ defaults:
 
 # was the best version in real during the submition to CoRL 2024
 name: eval_ldm_mixed_rgb+raw
-resume_pretrained: 
-camera_resolution: 480x270 #  W,H
+resume_pretrained: experiments/ldm_sf-241212.2.dep4.lr3e-05.v_prediction.nossi.scaled_linear.randn.ddpm1000.Dreds_HssdIsaacStd_ClearPose.180x320.rgb+raw.w0.0/epoch_0056
+camera_resolution: 320x180 #  W,H
 image_size: [180,320] # H,W
-eval_dataset: [Real_xiaomeng_fxm]
+eval_dataset: [Dreds]
 eval_num_batch: -1
 eval_batch_size: 4
 num_inference_timesteps: 10

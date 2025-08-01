@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=1 python infer_graspnet_trans.py --variant 'left+right+raw' --split 'test_novel'

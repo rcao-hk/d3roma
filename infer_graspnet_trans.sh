@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=0 python infer_graspnet_trans.py --variant 'rgb+raw' --split 'test_novel'

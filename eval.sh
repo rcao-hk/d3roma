@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 accelerate launch distributed_evaluate.py task=eval_dreds_reprod

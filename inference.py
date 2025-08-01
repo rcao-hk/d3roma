@@ -73,7 +73,15 @@ class D3RoMa():
             pipeline = clazz_pipeline.from_pretrained(patrained_path).to("cuda")
             # model = UNet2DConditionModel.from_pretrained(patrained_path)
             pipeline.guidance.flow_guidance_mode=config.flow_guidance_mode
-
+            
+            # from diffusers import UNet2DModel, DDIMScheduler
+            # from core.guidance import FlowGuidance
+            # from config import TrainingConfig, create_sampler
+            # model = UNet2DModel.from_pretrained(f"{patrained_path}/unet").to("cuda")
+            # flow_guidance =  FlowGuidance(config.flow_guidance_weights[0], config.perturb_start_ratio, config.flow_guidance_mode)
+            # scheduler = create_sampler(config, train=False)
+            # pipeline = GuidedDiffusionPipeline(unet=model, guidance=flow_guidance, scheduler=scheduler)
+        
             if config.sampler == "my_ddim":
                 from core.scheduler_ddim import MyDDIMScheduler
                 my_ddim = MyDDIMScheduler.from_config(dict(
@@ -120,8 +128,11 @@ class D3RoMa():
         rgb = cv2.resize(rgb, self.camera.resolution[::-1], interpolation=cv2.INTER_LINEAR)
         rgb = torch.from_numpy(rgb).permute(2, 0, 1).float()
 
+        if raw_depth.shape[0] != self.camera.resolution[0] or raw_depth.shape[1] != self.camera.resolution[1]:
+            raw_depth = cv2.resize(raw_depth, dsize=self.camera.resolution[::-1], interpolation=cv2.INTER_NEAREST)
+
         if len(raw_depth.shape) == 2:
-            raw_depth = raw_depth[...,None]
+            raw_depth = raw_depth[...,None]       
         raw_depth = torch.from_numpy(raw_depth).permute(2, 0, 1).float()
 
         assert self.config.prediction_space == "disp", "not implemented"
@@ -205,6 +216,7 @@ class D3RoMa():
             right_image = right_image.unsqueeze(0).repeat(self.config.num_inference_rounds, 1, 1, 1)
 
         raw_disp = raw_disp.to(device)
+
         normalized_raw_disp = self.normer.normalize(raw_disp)[0] # normalized sim disp
         normalized_raw_disp = normalized_raw_disp.unsqueeze(0).repeat(self.config.num_inference_rounds, 1, 1, 1)
 
@@ -262,12 +274,16 @@ if __name__ == "__main__":
         "task=eval_ldm_mixed_rgb+raw",
         "task.resume_pretrained=experiments/ldm_sf-241212.2.dep4.lr3e-05.v_prediction.nossi.scaled_linear.randn.ddpm1000.Dreds_HssdIsaacStd_ClearPose.180x320.rgb+raw.w0.0/epoch_0056",
 
+        # "task=eval_dreds_reprod",
+        # "task.resume_pretrained=experiments/dreds-release.dep1.lr1e-04.sample.ssi.squaredcos_cap_v2.pyramid.my_ddpm128.Dreds.126x224.rgb+raw.w0.0/best",
+
         # rest of the configurations
         "task.eval_num_batch=1",
         "task.image_size=[360,640]", 
         "task.eval_batch_size=1",
         "task.num_inference_rounds=1",
-        "task.num_inference_timesteps=10", "task.num_intermediate_images=5",
+        "task.num_inference_timesteps=10", 
+        "task.num_intermediate_images=5",
         "task.write_pcd=true"
     ]
     """ if False: # turn on guidance

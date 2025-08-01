@@ -120,16 +120,25 @@ class GuidedDiffusionPipeline(DiffusionPipeline):
         else:
             raise ValueError("sample_size must be int or tuple of ints")
                 
-        image = image.to(self.device)
+        # image = image.to(self.device)
+        # if rgb_images is not None:
+        #     rgb_images = rgb_images.to(self.device)
+        # if left_images is not None:
+        #     left_images = left_images.to(self.device)
+        # if right_images is not None:
+        #     right_images = right_images.to(self.device)
+        # if sim_disp is not None:
+        #     sim_disp = sim_disp.to(self.device)
+
+        image = image.cuda()
         if rgb_images is not None:
-            rgb_images = rgb_images.to(self.device)
+            rgb_images = rgb_images.cuda()
         if left_images is not None:
-            left_images = left_images.to(self.device)
+            left_images = left_images.cuda()
         if right_images is not None:
-            right_images = right_images.to(self.device)
+            right_images = right_images.cuda()
         if sim_disp is not None:
-            sim_disp = sim_disp.to(self.device)
-        
+            sim_disp = sim_disp.cuda()
         # preparations
         self.scheduler.set_timesteps(num_inference_steps)
 
@@ -302,24 +311,41 @@ class GuidedLatentDiffusionPipeline(DiffusionPipeline):
             raise ValueError("sample_size must be int or tuple of ints") """
         
         image = randn_tensor((input_shape[0], 4, input_shape[2]//8, input_shape[3]//8), generator=generator)
-        image = image.to(self.device)
+        # image = image.to(self.device)
 
+        # if rgb_images is not None:
+        #     rgb_images = rgb_images.to(self.device)
+        #     cond_images = encode_rgb(self.vae, rgb_images, 0.18215)
+        
+        # if left_images is not None:
+        #     left_images = left_images.to(self.device)
+        #     left_images_latent = encode_rgb(self.vae, left_images, 0.18215)
+                
+        # if right_images is not None:
+        #     right_images = right_images.to(self.device)
+        #     right_images_latent = encode_rgb(self.vae, right_images, 0.18215)
+
+        # if sim_disp is not None:
+        #     sim_disp = sim_disp.to(self.device)
+        #     sim_disp_latent = encode_disp(self.vae, sim_disp, 0.18215)
+
+        image = image.cuda()
         if rgb_images is not None:
-            rgb_images = rgb_images.to(self.device)
+            rgb_images = rgb_images.cuda()
             cond_images = encode_rgb(self.vae, rgb_images, 0.18215)
         
         if left_images is not None:
-            left_images = left_images.to(self.device)
+            left_images = left_images.cuda()
             left_images_latent = encode_rgb(self.vae, left_images, 0.18215)
                 
         if right_images is not None:
-            right_images = right_images.to(self.device)
+            right_images = right_images.cuda()
             right_images_latent = encode_rgb(self.vae, right_images, 0.18215)
 
         if sim_disp is not None:
-            sim_disp = sim_disp.to(self.device)
+            sim_disp = sim_disp.cuda()
             sim_disp_latent = encode_disp(self.vae, sim_disp, 0.18215)
-        
+            
         # preparations
         self.scheduler.set_timesteps(num_inference_steps)
 

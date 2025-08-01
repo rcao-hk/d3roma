@@ -63,7 +63,7 @@ def denormalize(config, pred_disps, raw_disp=None, mask=None):
 
     return pred_disps_unnormalized
 
-def eval_batch(config, pipeline, disable_bar, fxb=None, normalized_rgb=None, raw_disp=None, mask=None, 
+def eval_batch(config, pipeline, disable_bar, fxb=None, normalized_rgb=None, raw_disp=None, mask=None, obj_mask=None,
             left_image=None, right_image=None, sim_disp=None, raw_depth=None, **kwargs):
     """ raw_disp: unnormalized gt data 
         sim_disp: simulated disp from stereo/rgbd cameras
@@ -130,11 +130,14 @@ def eval_batch(config, pipeline, disable_bar, fxb=None, normalized_rgb=None, raw
         pred_disps_unnormalized = np.clip(pred_disps_unnormalized, min_, max_) # for numerical stability
     else:
         mask = mask.squeeze(1).cpu().numpy().astype(bool)  # b,h,w
-
+        
+    if obj_mask is not None:
+        obj_mask = obj_mask.squeeze(1).cpu().numpy().astype(bool)
+        
     metrics = compute_errors(gt_disp_unnormalized, 
                              pred_disps_unnormalized,
                              config.prediction_space,
-                             mask, 
+                             obj_mask, 
                              fxb.cpu().numpy() if fxb is not None else None)
 
     if pred_disps.shape[1] // config.depth_channels > 1:

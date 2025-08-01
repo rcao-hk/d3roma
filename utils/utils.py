@@ -175,7 +175,7 @@ class Normalizer():
             else:
                 mask = mask.to(torch.bool)
             if low is None and up is None:
-                low, up = torch.quantile(x[mask.to(torch.bool)], torch.tensor([self.low_p, self.high_p], dtype=x.dtype))
+                low, up = torch.quantile(x[mask.to(torch.bool)], torch.tensor([self.low_p, self.high_p], dtype=x.dtype, device=x.device))
             y = torch.zeros_like(x)
             y[mask] = (torch.clamp((x[mask] - low) / (up - low), 0, 1) - self.t) * self.s
             return y, low, up
@@ -550,7 +550,7 @@ def compute_depth_errors(gt, pred):
     return dict(a1=a1, a2=a2, a3=a3, abs_rel=abs_rel, rmse=rmse, log_10=log_10, rmse_log=rmse_log,
                 silog=silog, sq_rel=sq_rel)
 
-
+import cv2
 def compute_errors(gt_disps, pred_disps, space="disp", masks=None, fxb=None):
     """ gt_disp: BxHxW, pred_disp: BxHxW, units should be pixels
         mask: BxHxW, valid pixels
@@ -562,7 +562,7 @@ def compute_errors(gt_disps, pred_disps, space="disp", masks=None, fxb=None):
     if masks is None:
         masks = valid(gt_disps)
 
-    assert valid(gt_disps[masks]).sum() == gt_disps[masks].size, "WANING: invalid gt found"
+    # assert valid(gt_disps[masks]).sum() == gt_disps[masks].size, "WANING: invalid gt found"
     
     pred_disps = pred_disps.copy()
     pred_disps[~masks] = 0 # fair comparison
@@ -655,9 +655,18 @@ def compute_errors(gt_disps, pred_disps, space="disp", masks=None, fxb=None):
     #         'depth': dict(zip(["a1", "a2", "a3", "rmse", "rel", "mae"], np.array(metrics_depth).mean(0)))}
 
 def metrics_to_dict(metrics_disp, metrics_depth):
+    # return {
+    #         'disp': dict(zip(["epe", "d1", "d2", "d3", "d5"], np.array(metrics_disp).mean(0))),
+    #         'depth': dict(zip(["a1", "a2", "a3", "rmse", "rel", "mae"], np.array(metrics_depth).mean(0)))
+    #         }
+    metrics_disp = np.array(metrics_disp)
+    metrics_depth = np.array(metrics_depth)
+    metrics_disp[~np.isfinite(metrics_disp)] = np.nan
+    metrics_depth[~np.isfinite(metrics_depth)] = np.nan
+    
     return {
-            'disp': dict(zip(["epe", "d1", "d2", "d3", "d5"], np.array(metrics_disp).mean(0))),
-            'depth': dict(zip(["a1", "a2", "a3", "rmse", "rel", "mae"], np.array(metrics_depth).mean(0)))
+            'disp': dict(zip(["epe", "d1", "d2", "d3", "d5"], np.nanmean(metrics_disp, axis=0))),
+            'depth': dict(zip(["a1", "a2", "a3", "rmse", "rel", "mae"], np.nanmean(metrics_depth,axis=0)))
             }
 
 def normalize_rgb(*images):

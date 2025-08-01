@@ -5,7 +5,7 @@ name: dreds
 ldm: false
 prediction_space: disp
 resume_pretrained: 
-cond_channels: left+right+raw
+cond_channels: rgb+raw
 camera_resolution: 224x126 #  WxH
 image_size: [126, 224] # H,W
 ssi: true
@@ -18,9 +18,9 @@ ch_gammas: [1.]
 num_chs: 1
 norm_s: 2
 norm_t: 0.5
-train_batch_size: 32
+train_batch_size: 20
 eval_num_batch: -1
-eval_batch_size: 32
+eval_batch_size: 20
 lr_warmup_steps: 1000
 learning_rate: 0.0001
 lr_scheduler: constant
