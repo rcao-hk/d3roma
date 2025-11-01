@@ -481,30 +481,35 @@ class ActiveStereoDataset(StereoDataset):
         else:
             min_disp = 0
             max_disp = 512
-            valid = (disp < max_disp) and (disp > min_disp)
-        
-        if self.split.startswith("test_std"):
-            mask = Image.open(self.obj_mask_list[index])
-            mask = np.array(mask)
-        else:
-            mask = exr_loader(self.obj_mask_list[index], ndim = 1, ndim_representation = ['R'])
-            mask = np.array(mask * 255, dtype=np.int32)
+            valid = (disp < max_disp) & (disp > min_disp)
+                    
+        if self.__class__.__name__ in (["Dreds"]):
+            if self.split.startswith("test_std"):
+                mask = Image.open(self.obj_mask_list[index])
+                mask = np.array(mask)
+            else:
+                mask = exr_loader(self.obj_mask_list[index], ndim = 1, ndim_representation = ['R'])
+                mask = np.array(mask * 255, dtype=np.int32)
+                
+            meta = load_meta(self.metadata_list[index])
+            material_mask = np.full(mask.shape, -1)
+            for i in range(len(meta)):
+                material_mask[mask == meta[i]["index"]] = meta[i]["material"]
             
-        meta = load_meta(self.metadata_list[index])
-        material_mask = np.full(mask.shape, -1)
-        for i in range(len(meta)):
-            material_mask[mask == meta[i]["index"]] = meta[i]["material"]
-        
-        obj_mask = np.full(mask.shape, 0)
-        obj_mask[material_mask == 2] = 1
-        obj_mask[material_mask == 3] = 1
-        obj_mask[material_mask == 0] = 1
-        obj_mask[material_mask == 1] = 1
-        
-        # print('valid', valid.shape, 'obj_mask', obj_mask.shape)
-        if obj_mask.shape != valid.shape:
-            # resize obj_mask to valid shape
-            obj_mask = cv2.resize(obj_mask, dsize=valid.shape[::-1], interpolation=cv2.INTER_NEAREST)
+            obj_mask = np.full(mask.shape, 0)
+            obj_mask[material_mask == 2] = 1
+            obj_mask[material_mask == 3] = 1
+            obj_mask[material_mask == 0] = 1
+            obj_mask[material_mask == 1] = 1
+            
+            # print('valid', valid.shape, 'obj_mask', obj_mask.shape)
+            if obj_mask.shape != valid.shape:
+                # resize obj_mask to valid shape
+                obj_mask = cv2.resize(obj_mask, dsize=valid.shape[::-1], interpolation=cv2.INTER_NEAREST)
+                
+            obj_mask = torch.from_numpy(obj_mask).float().unsqueeze(0)  # [1,h,w]
+        else:
+            obj_mask = torch.ones_like(torch.from_numpy(valid).float().unsqueeze(0))  # [1,h,w]
             
         # cv2.imwrite('valid.png', valid.astype(np.uint8)*255)
         rgb = np.array(Image.open(self.rgb_list[index])).astype(np.uint8)[...,:3]
@@ -546,7 +551,7 @@ class ActiveStereoDataset(StereoDataset):
             """ return h,w,1 """
             depth = np.array(frame_utils.read_gen(filename))
             depth_unit = 1.0
-            if self.camera.device == "fxm" or self.camera.device == "jav" or self.camera.device == "d435" or self.camera.device == "clearpose":
+            if self.camera.device == "fxm" or self.camera.device == "jav" or self.camera.device == "d435" or self.camera.device == "clearpose" or self.camera.device == "hammer":
                 depth_unit = 1e-3
                 depth = depth.astype(np.int32)
 
@@ -570,7 +575,6 @@ class ActiveStereoDataset(StereoDataset):
 
         disp = torch.from_numpy(disp).float().unsqueeze(0)  # [1,h,w]
         valid = torch.from_numpy(valid).float().unsqueeze(0)  # [1,h,w]
-        obj_mask = torch.from_numpy(obj_mask).float().unsqueeze(0)  # [1,h,w]
         
         def random_crop_with_margin(x, margin=16): # horizontal margin left
             H, W = self.image_size # crop size
@@ -720,6 +724,59 @@ class Dreds(ActiveStereoDataset):
         
     def __len__(self):
         return len(self.rgb_list)
+
+
+class HAMMER(ActiveStereoDataset): # RGB-D version (Because of invalid stlaereo data)
+    def __init__(self, camera, normalizer, image_size, split="train", space="depth", aug_params=None):
+        super().__init__(camera, normalizer, image_size, split, space, aug_params, reader=partial(frame_utils.readDispReal, camera))
+        self.split = split #split
+        self.dataset_path = "datasets/HAMMER"
+        self.camera = camera
+        self.camera_type = 'd435' # hack
+        if self.split == 'train':
+            self.scenes = ['scene2_traj1_1', 'scene2_traj1_2', 'scene2_traj2_1', 'scene2_traj2_2', 'scene3_traj1_1', 'scene3_traj2_1', 'scene4_traj1_1', 'scene4_traj2_1', 'scene5_traj1_1', 'scene5_traj2_1', 'scene6_traj1_1', 'scene6_traj2_1', 'scene7_traj1_1', 'scene7_traj2_1', 'scene7_traj2_2', 'scene8_traj1_1', 'scene8_traj2_1', 'scene9_traj1_1', 'scene9_traj2_1', 'scene10_traj1_1', 'scene10_traj2_1', 'scene11_traj1_1', 'scene11_traj2_1']
+        elif self.split == 'val':
+            self.scenes = ['scene12_traj1_1', 'scene12_traj2_1','scene12_traj2_2', 'scene13_traj1_1', 'scene13_traj2_1', 'scene13_traj2_2', 'scene14_traj1_1', 'scene14_traj2_1', 'scene14_traj2_2']
+            
+        assert os.path.exists(self.dataset_path)
+        self._add_data()
+
+    def _add_data(self):
+        """ disp_list = sorted(glob(osp.join(self.dataset_path, "*disp.exr")))
+        sim_disp_list = sorted(glob(osp.join(self.dataset_path, "*simDispImage.png")))
+        image1_list = sorted(glob(osp.join(self.dataset_path, "*_ir_l.png")))
+        image2_list = sorted(glob(osp.join(self.dataset_path, "*_ir_r.png")))
+
+        for img1, img2, sim_disp, disp in zip(image1_list, image2_list, sim_disp_list, disp_list):
+            assert img1.split('/')[-2:] == disp.split('/')[-2:]
+            self.image_list += [ [img1, img2] ]
+            self.sim_disparity_list += [ sim_disp ]
+            self.disparity_list += [ disp ] """
+        
+        # depth_list = sorted(glob(osp.join(self.dataset_path, "*_depth.exr")))
+        depth_list  = []
+        for scene in self.scenes:
+            depth_list += sorted(glob(osp.join(self.dataset_path, scene, 'polarization', '_gt', '*.png')))
+            
+        total = 0
+        for depth in depth_list:
+            left = depth.replace('_gt', 'rgb')
+            raw_depth = depth.replace('_gt', 'depth_{}'.format(self.camera_type))
+
+            self.rgb_list += [ left ]
+            self.image_list += [ [left, left]]
+            self.depth_list += [ depth ]
+            self.disparity_list += [depth]
+            self.sim_disparity_list += [raw_depth]
+            self.raw_depth_list += [raw_depth]
+            # if self.split == "val" and total > 100: break
+            total +=1
+
+        assert len(self.rgb_list) == len(self.depth_list)  > 0
+
+    def __len__(self):
+        return len(self.image_list)
+
 
 class HISS(ActiveStereoDataset):
     def __init__(self, camera, normalizer, image_size, split="train", space="disp", aug_params=None, reader=None):

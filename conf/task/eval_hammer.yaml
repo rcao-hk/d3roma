@@ -1,0 +1,18 @@
+defaults:
+  - train_hammer
+
+name: hammer
+resume_pretrained: experiments/hammer-hamer.dep1.lr1e-04.sample.ssi.squaredcos_cap_v2.pyramid.my_ddpm128.HAMMER.180x320.rgb+raw.w0.0/best
+cond_channels: rgb+raw
+camera_resolution: 320x180 #  WxH
+image_size: [180, 320] # H,W
+safe_ssi: true
+train_dataset: [HAMMER]
+eval_dataset: [HAMMER]
+eval_split: val
+eval_num_batch: -1
+eval_batch_size: 32
+save_model_epochs: 5
+num_inference_timesteps: 8
+num_intermediate_images: 4
+sampler: my_ddpm

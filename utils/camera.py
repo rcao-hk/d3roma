@@ -56,6 +56,8 @@ class DepthCamera(object):
             return RGBDCamera.default_clearpose()
         elif device == "syntodd":
             return RGBDCamera.default_syntodd()
+        elif device == "hammer":
+            return RGBDCamera.default_hammer()
         elif device == "sim":
             return Realsense.default_sim(min_depth=0.2, max_depth=5.0)
         else:
@@ -240,6 +242,28 @@ class RGBDCamera(DepthCamera):
         )
         cam.device = "syntodd"
         cam._baseline = 24.54705 / 613.9624633789062 # hack: so fxb is same as realsense
+        return cam
+
+    @staticmethod
+    def default_hammer():
+        cam = RGBDCamera("1088x832", 
+        {
+            "intrinsic": [706.75531005859375, 707.5133056640625, 545.632681932806, 389.9299663507044897], # fx, fy, cx, cy
+            "distortion": [] # k1, k2, p1, p2, k3
+        },
+        {
+            "intrinsic": [706.75531005859375, 707.5133056640625, 545.632681932806, 389.9299663507044897], # fx, fy, cx, cy
+            "distortion": [] # k1, k2, p1, p2, k3
+        },
+        [
+            [1, 0, 0, 0],
+            [0, 1, 0, 0],
+            [0, 0, 1, 0],
+            [0, 0, 0, 1]
+        ]
+        )
+        cam.device = "hammer"
+        cam._baseline = 24.54705 / 706.75531005859375 # hack: so fxb is same as realsense
         return cam
 
     def __init__(self, resolution, rgb_cam_params, depth_cam_params, extrinsics):

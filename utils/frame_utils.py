@@ -189,7 +189,7 @@ def readDispReal(camera, filename):
     data = cv2.resize(data, dsize=camera.resolution[::-1], interpolation=cv2.INTER_NEAREST)
     valid = ~ np.isinf(data) & ~ np.isnan(data) & (data > 0)
 
-    if "depth" in filename or "Depth" in filename:
+    if "depth" in filename or "Depth" in filename or "_gt" in filename:
         # depth = camera.transform_depth_to_rgb_frame(depth) #if not alreay aligned
         disp = np.zeros_like(data, dtype=np.float32)
         # FIXME: hack 
@@ -198,7 +198,7 @@ def readDispReal(camera, filename):
             depth_unit = 1e-3
             valid = valid & (data > 200) & (data < 3000)
             data = np.clip(data, a_min=0.0, a_max=3000) # only clip large depth values
-        elif camera.device == "clearpose":
+        elif camera.device == "clearpose" or camera.device == "hammer":
             depth_unit = 1e-3
             min_depth = camera.min_depth / depth_unit
             max_depth = camera.max_depth / depth_unit

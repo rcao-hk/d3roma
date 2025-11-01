@@ -1,1 +1,2 @@
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 accelerate launch distributed_evaluate.py task=eval_dreds_reprod
+# CUDA_VISIBLE_DEVICES=0,1,2,3,4,5 accelerate launch distributed_evaluate.py task=eval_dreds_reprod
+accelerate launch distributed_evaluate.py task=eval_hammer

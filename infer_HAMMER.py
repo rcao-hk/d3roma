@@ -12,12 +12,9 @@ from PIL import Image
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Depth Anything V2')
     
-    parser.add_argument('--dataset_root', type=str, default='/home/smartgrasping/rcao/object_depth_percetion/data/HAMMER')
-    parser.add_argument('--output_root', type=str, default='/home/smartgrasping/rcao/object_depth_percetion/result/HAMMER')
-    parser.add_argument('--input-size', type=int, default=518)
-    parser.add_argument('--method', type=str, default='d3roma_ft')
-    parser.add_argument('--encoder', type=str, default='vitl', choices=['vits', 'vitb', 'vitl', 'vitg'])
-    # parser.add_argument('--dataset', type=str, default='hypersim')
+    parser.add_argument('--dataset_root', type=str, default='/data/robotarm/dataset/HAMMER')
+    parser.add_argument('--output_root', type=str, default='/data/robotarm/result/depth/mixed/hammer')
+    parser.add_argument('--method', type=str, default='d3roma_zs_360x640')
     parser.add_argument('--min-depth', type=float, default=0.001)
     parser.add_argument('--max-depth', type=float, default=2)
     parser.add_argument('--camera', type=str, default='d435', choices=['l515', 'd435', 'tof'])
@@ -33,6 +30,9 @@ if __name__ == '__main__':
 
     from utils.camera import Realsense
     camera = Realsense.default_real(args.camera)
+
+    # from utils.camera import RGBDCamera
+    # camera = RGBDCamera.default_hammer()
     overrides = [
         # uncomment if you choose variant left+right+raw
         # "task=eval_ldm_mixed",
@@ -52,7 +52,7 @@ if __name__ == '__main__':
     ]
     """ if False: # turn on guidance
         overrides += [
-            "task.sampler=my_ddim", 
+            "task.sampler=my_ddpm", 
             "task.guide_source=raw-depth", 
             "task.flow_guidance_mode=gradient", 
             "task.flow_guidance_weights=[1.0]"
@@ -63,7 +63,6 @@ if __name__ == '__main__':
 
     # filenames = glob.glob(os.path.join(args.dataset_root, '*/*_color.png'))
     test_scenes = ['scene12_traj1_1', 'scene12_traj2_1','scene12_traj2_2', 'scene13_traj1_1', 'scene13_traj2_1', 'scene13_traj2_2', 'scene14_traj1_1', 'scene14_traj2_1', 'scene14_traj2_2']
-    # test_scenes = ['scene12_traj1_1']
     scenes = test_scenes
 
     for scene_name in scenes:
@@ -100,7 +99,7 @@ if __name__ == '__main__':
             # image = raw_image
             # init_depth, depth = model.infer_image(image, obs_depth, args.input_size, True)
 
-            depth_aligned = camera.transform_depth_to_rgb_frame(raw) #if not alreay aligned
+            # depth_aligned = camera.transform_depth_to_rgb_frame(raw) #if not alreay aligned
             # if True: # visualize aligned depth for realsense d415
             #     valid = (depth_aligned > args.min_depth) & (depth_aligned < args.max_depth)
             #     import matplotlib.pyplot as plt
@@ -109,7 +108,7 @@ if __name__ == '__main__':
             #     raw_depth_normalized[valid] = (depth_aligned[valid] - depth_aligned[valid].min()) / (depth_aligned[valid].max() - depth_aligned[valid].min())
             #     Image.fromarray((cmap_spectral(raw_depth_normalized)*255.)[...,:3].astype(np.uint8)).save(f"raw_aligned.png")
 
-            pred_depth = droma.infer_with_rgb_raw(rgb, depth_aligned)
+            pred_depth = droma.infer_with_rgb_raw(rgb, raw)
         
             # rel_depth, depth = model.infer_image(image, args.input_size)
             

@@ -244,16 +244,16 @@ class D3RoMa():
         pred_disps_unnormalized = denormalize(self.config, pred_disps, raw_disp, mask)
         pred_disps_unnormalized = pred_disps_unnormalized.mean(dim=0)
         
-        if True:
-            from utils.utils import compute_errors, metrics_to_dict, pretty_json
-            metrics = compute_errors(raw_disp[0].cpu().numpy(), 
-                                pred_disps_unnormalized.cpu().numpy(),
-                                self.config.prediction_space,
-                                mask[0].cpu().numpy().astype(bool), 
-                                [self.camera.fxb_depth])
+        # if True:
+        #     from utils.utils import compute_errors, metrics_to_dict, pretty_json
+        #     metrics = compute_errors(raw_disp[0].cpu().numpy(), 
+        #                         pred_disps_unnormalized.cpu().numpy(),
+        #                         self.config.prediction_space,
+        #                         mask[0].cpu().numpy().astype(bool), 
+        #                         [self.camera.fxb_depth])
             
-            metrics = metrics_to_dict(*metrics)
-            print((f"metrics:{pretty_json(metrics)}"))
+        #     metrics = metrics_to_dict(*metrics)
+        #     print((f"metrics:{pretty_json(metrics)}"))
 
         pred_disps_unnormalized = pred_disps_unnormalized[0].cpu().numpy()
         pred_depth = np.zeros_like(pred_disps_unnormalized)

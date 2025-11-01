@@ -8,7 +8,7 @@ from utils.camera import Realsense, RGBDCamera
 
 def create_dataset(config: TrainingConfig, dataset_name, split = "train"):
     mono_lst = ['NYUv2', 'ScanNet', 'HyperSim', 'SceneNet', 'ScanNetpp', 'VK2', 'KITTI', "Middlebury", "InStereo2K", "Tartenair", "HRWSI", "SynTODD"]
-    stereo_lst = ["Dreds",  "Middlebury", "SceneFlow", "Real", "HISS", "ClearPose", "SynTODDRgbd", "Gapartnet2"]
+    stereo_lst = ["Dreds",  "HAMMER", "Middlebury", "SceneFlow", "Real", "HISS", "ClearPose", "SynTODDRgbd", "Gapartnet2"]
     image_size = tuple(config.image_size)
 
     if len(dataset_name.split("_")) > 1: # Real_split_device
@@ -60,6 +60,10 @@ def create_dataset(config: TrainingConfig, dataset_name, split = "train"):
                 camera.change_resolution(config.camera_resolution)
                 disp_reader = partial(frame_utils.readDispReal, camera)
                 dataset = SynTODDRgbd(config.dataset_variant, camera, normalizer, image_size, split, config.prediction_space, reader=disp_reader)
+            elif dataset_name == "HAMMER":
+                camera = RGBDCamera.default_hammer()
+                camera.change_resolution(config.camera_resolution)
+                dataset = HAMMER(camera, normalizer, image_size, split, config.prediction_space)
             elif dataset_name == "Gapartnet2":    
                 sim_camera = Realsense.from_device("sim")
                 sim_camera.change_resolution(config.camera_resolution)
@@ -99,6 +103,12 @@ def create_dataset(config: TrainingConfig, dataset_name, split = "train"):
                 camera.change_resolution(f"{image_size[1]}x{image_size[0]}")
                 disp_reader = partial(frame_utils.readDispReal, camera)
                 dataset = SynTODDRgbd(config.dataset_variant, camera, normalizer, image_size, split, config.prediction_space, reader=disp_reader)
+            elif dataset_name == "HAMMER": 
+                sim_camera = RGBDCamera.default_hammer()
+                sim_camera.change_resolution(f"{image_size[1]}x{image_size[0]}")
+                # assert image_size == (126, 224) # reprod dreds-1.0
+                # disp_reader = partial(frame_utils.readDispDreds_exr, sim_camera)
+                dataset = HAMMER(sim_camera, normalizer, image_size, split, space=config.prediction_space)
             elif dataset_name == "Gapartnet2":
                 sim_camera = Realsense.from_device("sim")
                 sim_camera.change_resolution(f"{config.image_size[1]}x{config.image_size[0]}")
